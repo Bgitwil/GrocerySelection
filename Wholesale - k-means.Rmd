@@ -1,0 +1,192 @@
+---
+title: "Wholesale - K-means"
+author: "Brittani Wilson"
+date: "June 12, 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+``````{r echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(stats)
+require(tidyverse)  
+require(cluster)    
+require(factoextra)
+require(gridExtra)
+require(animation)
+require(RColorBrewer)
+require(dendextend)
+
+
+customers <- read.csv(url("https://archive.ics.uci.edu/ml/machine-learning-databases/00292/Wholesale%20customers%20data.csv"), header = TRUE, sep = ",")
+head(customers)
+
+```
+I made a box plot to cehck for any outliers, and since there are some so I set parameters to leave them out after reviewing histograms for the individual variables. I also made sure to omit any missing values and dropped columns "channel" and "region" since they don't contribute much. I then used scale() to standardize the data frame and set the mean to zero. I then plotted distance matrix using Euclidean distance to check out correlation. 
+
+```{r message=FALSE} 
+
+str(customers)
+boxplot(customers)
+hist(customers$Fresh)
+hist(customers$Milk)
+hist(customers$Grocery)
+hist(customers$Frozen)
+hist(customers$Detergents_Paper)
+hist(customers$Delicassen)
+
+customers2<- subset(customers, Channel & Region & Fresh<30000 &
+                            Milk<20000 & Grocery<20000 & Frozen<5000
+                          & Detergents_Paper<10000 & Delicassen<3000)
+
+
+customers3<-customers2[-1:-2]
+
+customers3 <- na.omit(customers3)
+
+customers4 <- scale(customers3)
+summary(customers4)
+
+boxplot(customers4)
+
+customers_cor<- cor(customers4)
+customers_cor
+
+distance <- get_dist(customers_cor)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+
+
+```
+
+The R software uses 10 as the default value for the maximum number of iterations. An nstart of 25 is recommended and this serves as the number of initial configurations. According to the elbow method 4 looks to be the optimal number of clusters, and 2 maximizes the average silhoutette values for the average silhoutete method. However, the gap statistics recommended 10 clusters. 
+
+```{r}
+set.seed(34)
+k2 <- kmeans(customers4, centers = 2, nstart = 25)
+str(k2)
+fviz_cluster(k2, data = customers4)
+k2
+k3 <- kmeans(customers4, centers = 3, nstart = 25)
+k4 <- kmeans(customers4, centers = 4, nstart = 25)
+k5 <- kmeans(customers4, centers = 5, nstart = 25)
+
+p1 <- fviz_cluster(k2, geom = "point", data = customers4) + ggtitle("k = 2")
+p2 <- fviz_cluster(k3, geom = "point",  data = customers4) + ggtitle("k = 3")
+p3 <- fviz_cluster(k4, geom = "point",  data = customers4) + ggtitle("k = 4")
+p4 <- fviz_cluster(k5, geom = "point",  data = customers4) + ggtitle("k = 5")
+grid.arrange(p1, p2, p3, p4, nrow = 2)
+set.seed(34)
+fviz_nbclust(customers4, kmeans, method = "wss")
+set.seed(34)
+fviz_nbclust(customers4, kmeans, method = "silhouette")
+set.seed(34)
+gap_stat <- clusGap(customers4, FUN = kmeans, nstart = 25,
+                    K.max = 10, B = 50)
+fviz_gap_stat(gap_stat)
+
+
+```
+Let's go with a cluster of 3. We can see from the product preferences in each of our three clusters that cluster 1 prefers to mainly buy fresh foods, and while this is a favorite of cluster 2 they tend to also buy more in the milk and grocery department. Cluster 3 tends to buy more of a mixture, the least in the fresh department, and the most of Detergents_Paper(the missing named value).
+
+
+```{r}
+set.seed(34)
+jBrewColors <- brewer.pal(n = 8, name = "Dark2")
+cluster1 <- (customers3[k3$cluster==1,])
+cluster1_avg <- (sapply(cluster1, mean, na.rm=TRUE))
+cluster1_avg
+barplot(cluster1_avg, main="Cluster 1 Purchasing Habits", xlab="Products",ylab="Annual average spending",col = brewer.pal(n = 8, name = "Dark2"))
+
+cluster2 <- (customers3[k3$cluster==2,])
+cluster2_avg <- (sapply(cluster2, mean, na.rm=TRUE))
+cluster2_avg
+barplot(cluster2_avg, main="Cluster 3 Purchasing Habits", xlab="Products",ylab="Annual average spending",col = brewer.pal(n = 8, name = "Dark2"))
+
+cluster3 <- (customers3[k3$cluster==3,])
+cluster3_avg <- (sapply(cluster3, mean, na.rm=TRUE))
+cluster3_avg
+barplot(cluster3_avg, main="Cluster 3 Purchasing Habits", xlab="Products",ylab="Annual average spending",col = brewer.pal(n = 8, name = "Dark2"))
+
+```
+We can tell in the comparision between grocery and detergents_paper that customers in cluter 2 purchase most of these items while customers in cluster 1 don't purchase these items.
+
+While looking fresh and frozen plot we can see that while those in cluster 1 purchase the most in frozen they also purchase the least in fresh. Those in cluster 2 don't purchase from either.
+
+```{r}
+set.seed(34)
+
+customers4.subset<-as.data.frame(customers4[,c("Grocery","Detergents_Paper")])
+
+customers5 = kmeans(customers4.subset, centers = 3, nstart = 25)
+
+fviz_cluster(customers5, customers4.subset[, -5],
+   palette = "Set2", ggtheme = theme_minimal(), main = "Partitioning Clustering Plot")
+
+customers5$centers
+
+
+customers6.subset<-as.data.frame(customers4[,c("Frozen","Fresh")])
+
+customers7 = kmeans(customers6.subset, centers = 3, nstart = 10)
+
+fviz_cluster(customers7, customers4.subset[, -5],
+   palette = "Set2", ggtheme = theme_minimal(), main = "Partitioning Clustering Plot")
+
+customers7$centers
+
+```
+In building the dendogram we find that "ward" seems to be the best while "complete" is the second best linkage method. We cut the tree to find subgroups, and this is similar to finding the K in the k-means analysis. The color lines surrounding is to better define the borders for each cluster, and you can see this change as the number of clusters change with each cut.
+
+We can see that Fresh, Frozen, and Delicatessen are the most similar to each other, but the most dissimlar to Milk, Grocery, and Detergent_Paper.
+```{r}
+set.seed(34)
+customers_cor.d <- dist(customers_cor, method = "euclidean")
+hc2 <- agnes(customers_cor.d, method = "complete")
+hc2$ac
+
+m <- c( "average", "single", "complete", "ward")
+names(m) <- c( "average", "single", "complete", "ward")
+
+ac <- function(x) {
+  agnes(customers_cor.d, method = x)$ac
+}
+
+map_dbl(m, ac)
+
+hc3 <- agnes(customers_cor.d, method = "ward")
+pltree(hc3, cex = 0.6, hang = -1, main = "Dendrogram of agnes") 
+hc5 <- hclust(customers_cor.d, method = "ward.D2" )
+
+sub_grp2 <- cutree(hc5, k = 2)
+table(sub_grp2)
+plot(hc5, cex = 0.6)
+rect.hclust(hc5, k = 2, border = 2:5)
+
+
+
+sub_grp3 <- cutree(hc5, k = 3)
+table(sub_grp3)
+plot(hc5, cex = 0.6)
+rect.hclust(hc5, k = 3, border = 2:5)
+
+
+
+sub_grp4 <- cutree(hc5, k = 4)
+table(sub_grp4)
+plot(hc5, cex = 0.6)
+rect.hclust(hc5, k = 4, border = 2:5)
+
+
+```
+  Now we compare the 2 linkage methods "complete" and "ward" by measuring their entaglement, which is a measure between 1 (full entanglement) and 0 (no entanglement). A lower entanglement coefficient means there is a good alignment.
+  
+```{r}
+res.dist <- dist(customers_cor, method = "euclidean")
+hc11 <- hclust(res.dist, method = "complete")
+hc22 <- hclust(res.dist, method = "ward.D2")
+dend1 <- as.dendrogram (hc11)
+dend2 <- as.dendrogram (hc22)
+
+tanglegram(dend1, dend2)
+```
