@@ -1,6 +1,5 @@
 ---
 title: "Wholesale - K-means"
-author: "Brittani Wilson"
 date: "June 12, 2019"
 output:
   html_document: default
